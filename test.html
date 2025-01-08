@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Управление на камерата с VAX.js</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+			    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+			    "vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+            }
+        }
+    </script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <button id="requestPermission" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 10px 20px; font-size: 18px;">
+        Разреши достъп до сензорите
+    </button>
+
+    <div id="yRotBox" style="position: absolute; top: 10px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        yRot: 0
+    </div>
+
+    <div id="xRotBox" style="position: absolute; top: 40px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        xRot: 0
+    </div>
+    <div id="alpha" style="position: absolute; top: 70px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        alpha: 0
+    </div>
+
+    <script type="module">
+        import * as THREE from "three";
+        import * as VAX from "vax";
+
+        // Инициализация на сцената
+        VAX.init(animate);
+        var scene = VAX.scene;
+        var camera = VAX.camera;
+
+        VAX.scene.remove(VAX.camera);
+
+        // Създаване на под-обекти за камерата
+        var cameraPivot = new THREE.Object3D(); // Основен обект за въртене по хоризонтала
+        var cameraTilt = new THREE.Object3D();  // Обект за въртене по вертикала
+
+        // Добавяне на камерата като дете на "cameraTilt"
+        cameraTilt.add(camera);
+        cameraPivot.add(cameraTilt);
+
+        // Добавяне на "cameraPivot" към сцената
+        VAX.scene.add(cameraPivot);
+
+        // Задаване на начална позиция на камерата
+        camera.position.set(0, 0, 0);
+
+        var pointLight = new THREE.PointLight(0xffffff, 8000, 1000);
+        pointLight.position.set(0, 0, 0);
+        scene.add(pointLight);
+        
+        var icosahedrons = [];
+        var rotationSpeeds = [];
+
+        function createIcosahedron(refractiveEnvMap) {
+            var geometry = new THREE.IcosahedronGeometry(10, 0);
+            var material = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff, // Безцветност
+                roughness: 0, // Гладка повърхност
+                transmission: 1, // Пропускане на светлината
+                ior: 1, // Индекс на пречупване 
+                envMap: refractiveEnvMap, // Околна текстура за пречупване
+                envMapIntensity: 3, // Интензивност на околната текстура
+            });
+            var icosahedron = new THREE.Mesh(geometry, material);
+            return icosahedron;
+        }
+        
+        function addRandomIcosahedrons(count, refractiveEnvMap) {
+            for (let i = 0; i < count; i++) {
+                var icosahedron = createIcosahedron(refractiveEnvMap);
+
+                // Генериране на случайна позиция около камерата
+                var x = (Math.random() - 0.5) * 400;
+                var y = Math.random() * 80 - 40; 
+                var z = (Math.random() - 0.5) * 400;   
+
+                x = Math.abs(x) < 50 ? (x < 0 ? -50 : 50) : x; 
+                z = Math.abs(z) < 50 ? (z < 0 ? -50 : 50) : z;
+
+                icosahedron.position.set(x, y, z);
+
+                // Добавяне на икосахедрона като дете на камерата
+                VAX.scene.add(icosahedron);
+                icosahedrons.push(icosahedron);
+
+                rotationSpeeds.push({
+                    x: Math.random() * 0.4 - 0.2,
+                    y: Math.random() * 0.4 - 0.2
+                });
+            }
+        }
+
+        var envMapLoader = new THREE.CubeTextureLoader();
+        var еnvMap = envMapLoader.load([
+            'Tallinn/posx.jpg', 'Tallinn/negx.jpg',
+            'Tallinn/posy.jpg', 'Tallinn/negy.jpg',
+            'Tallinn/posz.jpg', 'Tallinn/negz.jpg'
+        ]);
+
+        addRandomIcosahedrons(25, еnvMap);
+
+        VAX.scene.background = еnvMap;
+
+        camera.position.set(0, 0, 0);
+        
+        var currentAlpha = 0;
+        var currentGamma = 0;	
+        var geometry = new THREE.IcosahedronGeometry(10, 0); // Радиус 10, без допълнително разделяне
+                        
+
+        function updateCameraOrientation(event) {
+            var rawAlpha = event.alpha || 0;
+            var rawBeta = event.beta || 0; 
+            var rawGamma = event.gamma || 0;
+            
+            // Изчисляване на ъглите
+            var normalizedAlpha = rawAlpha;
+            // var normalizedBeta = rawBeta - 90; // Настройка за легнало положение
+            var normalizedGamma = rawGamma;
+            if (rawGamma >= -90 && rawGamma <= 0) {
+                normalizedGamma = (-1)*(90 + rawGamma);
+            } else if (rawGamma > 0 && rawGamma <= 90) {
+                normalizedGamma = 90 - rawGamma;
+                normalizedAlpha = rawAlpha + 180;
+            }
+
+            // Въртене на "cameraPivot" по Y (хоризонтално движение)
+            cameraPivot.rotation.y = THREE.MathUtils.degToRad(normalizedAlpha);
+
+            // Въртене на "cameraTilt" по X (вертикално движение)
+            cameraTilt.rotation.x = THREE.MathUtils.degToRad(normalizedGamma);
+
+            // Обновяване на стойностите на екрана
+            // document.getElementById("yRotBox").innerText = "yRot: " + rawBeta.toFixed(2) ;
+            document.getElementById("xRotBox").innerText = "xRot: " + normalizedGamma.toFixed(2) + " (" + rawGamma.toFixed(2) + ")";
+            document.getElementById("alpha").innerText = "alpha: " + normalizedAlpha.toFixed(2) + " (" + rawAlpha.toFixed(2) + ")";
+        }
+
+
+        // Функция за заявка на разрешение, защото на ios се изисква, за да мога да достъпя тези данни
+        function requestPermission() {
+            if (typeof DeviceOrientationEvent.requestPermission === "function") {
+                DeviceOrientationEvent.requestPermission()
+                    .then((response) => {
+                        if (response === "granted") {
+                            window.addEventListener("deviceorientation", updateCameraOrientation, true);
+                            document.getElementById("requestPermission").style.display = "none";
+                        } else {
+                            alert("Достъпът до сензорите е отказан.");
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                window.addEventListener("deviceorientation", updateCameraOrientation, true);
+                document.getElementById("requestPermission").style.display = "none";
+            }
+        }
+
+        document.getElementById("requestPermission").addEventListener("click", requestPermission);
+
+        function animate(t) {
+            icosahedrons.forEach((icosahedron, index) => {
+                icosahedron.rotation.x = rotationSpeeds[index].x*t;
+                icosahedron.rotation.y = 2*rotationSpeeds[index].y*t;
+                icosahedron.rotation.z = 1.56*rotationSpeeds[index].y*t;
+                
+            });
+        }
+    </script>
+</body>
+</html>
