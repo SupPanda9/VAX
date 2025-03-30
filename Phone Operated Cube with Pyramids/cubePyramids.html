@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Управление на камерата с VAX.js</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+			    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+			    "vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+            }
+        }
+    </script>
+</head>
+<body style="margin: 0; overflow: hidden;">
+    <button id="requestPermission" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 10px 20px; font-size: 18px;">
+        Разреши достъп до сензорите
+    </button>
+
+    <div id="yRotBox" style="position: absolute; top: 10px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        yRot: 0
+    </div>
+
+    <div id="xRotBox" style="position: absolute; top: 40px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        xRot: 0
+    </div>
+    <div id="alpha" style="position: absolute; top: 70px; left: 10px; font-size: 18px; color: white; background-color: rgba(0, 0, 0, 0.5); padding: 5px;">
+        alpha: 0
+    </div>
+
+    <script type="module">
+        import * as THREE from "three";
+        import * as VAX from "vax";
+
+        // Инициализация на сцената
+        VAX.initParallax(animate);
+        var scene = VAX.scene;
+        var camera = VAX.camera;
+
+        VAX.scene.remove(VAX.light);
+        var pointLight = new THREE.PointLight(0xffffff, 8000, 1000);
+        pointLight.position.set(0, 0, 0);
+        scene.add(pointLight);
+
+        // Създаване на зелени стени с водещи бели линии
+        var cube = new THREE.Group();
+        var cubeSize = 100;
+        var edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(cubeSize - 0.2, cubeSize - 0.2, cubeSize - 0.2));
+        var edgeMaterial = new THREE.LineBasicMaterial({ color: 0xffffff });
+        var edgeLines = new THREE.LineSegments(edges, edgeMaterial);
+        cube.add(edgeLines);
+
+        var wallMaterial = new THREE.MeshBasicMaterial({ color: 0x30DF00, side: THREE.BackSide });
+        var walls = new THREE.Mesh(new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize), wallMaterial);
+        cube.add(walls);
+
+        // Добавяне на решетка към всяка стена на куба
+        function addGridToWall(normalVector, planeOffset) {
+            var gridSize = cubeSize;
+            var divisions = 100; // Брой деления в решетката
+
+            var gridHelper = new THREE.GridHelper(gridSize, divisions, 0xffffff, 0xffffff);
+            gridHelper.material.opacity = 0.5; // Намаляване на opacity
+            gridHelper.material.transparent = true;
+
+            if (normalVector.x !== 0) {
+                gridHelper.rotation.z = Math.PI / 2; // Завъртане за стени по X
+                gridHelper.position.set(planeOffset * normalVector.x, 0, 0);
+            } else if (normalVector.y !== 0) {
+                gridHelper.rotation.y = Math.PI / 2; // Завъртане за стени по Y
+                gridHelper.position.set(0, planeOffset * normalVector.y, 0);
+            } else if (normalVector.z !== 0) {
+                gridHelper.rotation.x = Math.PI / 2; // Завъртане за стени по Z
+                gridHelper.position.set(0, 0, planeOffset * normalVector.z); // Без завъртане за Z
+            }
+
+            cube.add(gridHelper);
+        }
+
+        // Добавяне на решетки по стените
+        addGridToWall(new THREE.Vector3(1, 0, 0), cubeSize / 2);  // Дясна стена
+        addGridToWall(new THREE.Vector3(-1, 0, 0), cubeSize / 2); // Лява стена
+        addGridToWall(new THREE.Vector3(0, 1, 0), cubeSize / 2);  // Горна стена
+        addGridToWall(new THREE.Vector3(0, -1, 0), cubeSize / 2); // Долна стена
+        addGridToWall(new THREE.Vector3(0, 0, 1), cubeSize / 2);  // Предна стена
+        addGridToWall(new THREE.Vector3(0, 0, -1), cubeSize / 2); // Задна стена
+
+        // Създаване на разноцветни конусчета върху вътрешните стени на куба
+        var coneGeometry = new THREE.ConeGeometry(1, 5, 32);
+        var conesPerWall = 250;
+
+        function addConesToWall(normalVector, planeOffset) {
+            for (var i = 0; i < conesPerWall; i++) {
+                var randomColor = Math.random() * 0xffffff;
+                var coneMaterial = new THREE.MeshLambertMaterial({ color: randomColor });
+                var cone = new THREE.Mesh(coneGeometry, coneMaterial);
+
+                // Случайни координати за стената
+                var x = (Math.random() - 0.5) * cubeSize;
+                var y = (Math.random() - 0.5) * cubeSize;
+                var z = (Math.random() - 0.5) * cubeSize;
+
+                // Позициониране на конуса спрямо нормалния вектор
+                if (normalVector.x !== 0) { // Стени по X
+                    cone.position.set(planeOffset * normalVector.x, x, y);
+                } else if (normalVector.y !== 0) { // Стени по Y
+                    cone.position.set(x, planeOffset * normalVector.y, y);
+                } else if (normalVector.z !== 0) { // Стени по Z
+                    cone.position.set(x, y, planeOffset * normalVector.z);
+                }
+
+                cone.lookAt(new THREE.Vector3(0, 0, 1000));
+
+                cube.add(cone);
+            }
+        }
+
+        // Добавяне на конуси към всяка от шестте стени
+        addConesToWall(new THREE.Vector3(1, 0, 0), cubeSize / 2); // Дясна стена
+        addConesToWall(new THREE.Vector3(-1, 0, 0), cubeSize / 2); // Лява стена
+        addConesToWall(new THREE.Vector3(0, 1, 0), cubeSize / 2); // Горна стена
+        addConesToWall(new THREE.Vector3(0, -1, 0), cubeSize / 2); // Долна стена
+        addConesToWall(new THREE.Vector3(0, 0, 1), cubeSize / 2); // Предна стена
+        addConesToWall(new THREE.Vector3(0, 0, -1), cubeSize / 2); // Задна стена
+
+        cube.position.set(0, 0, 0);
+        scene.add(cube);
+        camera.position.set(0, 0, 0);
+
+        var currentAlpha = 0;
+        var currentGamma = 0;	
+
+        function updateCameraOrientation(event) {
+            var rawAlpha = event.alpha || 0;
+            var rawBeta = event.beta || 0; 
+            var rawGamma = event.gamma || 0;
+            
+            var normalizedGamma = 0;
+            var normalizedAlpha = 0
+            var normalizedBeta = rawBeta;
+            if (rawGamma > 0) {
+                normalizedGamma = -(90 - rawGamma);
+                normalizedAlpha = rawAlpha;
+            }
+            else if (rawGamma < 0) {
+                normalizedGamma = -(-90 - rawGamma);
+                if (rawAlpha < 180)
+                    normalizedAlpha = rawAlpha + 180;
+                else
+                    normalizedAlpha = rawAlpha - 180;
+            }
+            else {
+                normalizedGamma = 0;
+                normalizedAlpha = 0;
+            }
+
+            // Приложи ротацията към камерата
+            var yRot = THREE.MathUtils.degToRad(normalizedAlpha); // Завъртане наляво-надясно
+            var xRot = THREE.MathUtils.degToRad(normalizedGamma); // Завъртане нагоре-надолу            
+            if (normalizedAlpha > 135 && normalizedAlpha < 225) {
+                xRot = THREE.MathUtils.degToRad(normalizedGamma);
+                camera.rotation.set(xRot, yRot, 0, "ZXY");
+            }
+            else if(normalizedAlpha > 225 && normalizedAlpha < 315) {
+                xRot = -THREE.MathUtils.degToRad(normalizedGamma);
+                camera.rotation.set(0, yRot, xRot, "ZXY");
+            }
+            else if(normalizedAlpha > 45 && normalizedAlpha < 135) {
+                xRot = THREE.MathUtils.degToRad(normalizedGamma);
+                camera.rotation.set(0, yRot, xRot, "ZXY");
+            }
+            else {
+                xRot = -THREE.MathUtils.degToRad(normalizedGamma);
+                camera.rotation.set(xRot, yRot, 0, "ZXY");
+            }
+
+            document.getElementById("yRotBox").innerText = "yRot: " + rawBeta.toFixed(2);
+            document.getElementById("xRotBox").innerText = "xRot: " + normalizedGamma.toFixed(2);
+            document.getElementById("alpha").innerText = "alpha: " + normalizedAlpha.toFixed(2);
+        }
+
+
+        // Функция за заявка на разрешение, защото на ios се изисква, за да мога да достъпя тези данни
+        function requestPermission() {
+            if (typeof DeviceOrientationEvent.requestPermission === "function") {
+                DeviceOrientationEvent.requestPermission()
+                    .then((response) => {
+                        if (response === "granted") {
+                            window.addEventListener("deviceorientation", updateCameraOrientation, true);
+                            document.getElementById("requestPermission").style.display = "none";
+                        } else {
+                            alert("Достъпът до сензорите е отказан.");
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                window.addEventListener("deviceorientation", updateCameraOrientation, true);
+                document.getElementById("requestPermission").style.display = "none";
+            }
+        }
+
+        document.getElementById("requestPermission").addEventListener("click", requestPermission);
+
+        function animate(t) {
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html>
+	<head>
+		<title>Домашно 2</title>
+		<meta charset="utf-8">
+		
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		
+		<script type="importmap">
+		  {
+			"imports": {
+			  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+			  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+			  "physijs": "./physijs/physi.module.js",
+			  "vax": "./vax-physi.js"
+			}
+		  }
+		</script>
+	</head>
+	
+	<body>
+		<script type="module">
+
+			import * as THREE from "three";
+			import "physijs";
+			import * as VAX from "vax";
+			import {mergeGeometries} from "three/addons/utils/BufferGeometryUtils.js";
+
+			VAX.init(animate);
+
+			// светлина и сенки
+			VAX.renderer.shadowMap.enabled = true;
+			VAX.light.shadow.mapSize = new THREE.Vector2(1024 * 2, 1024 * 2);
+			VAX.light.position.set(-150, 300, -50);
+			VAX.light.intensity = 0.9;
+
+			var light2 = VAX.light.clone();
+			light2.intensity = 1;
+			light2.castShadow = true;
+			VAX.scene.add(light2);
+
+			VAX.scene.add(new THREE.AmbientLight('white', 1));
+
+			VAX.camera.position.set(0, 100, 250);
+			VAX.camera.lookAt(new THREE.Vector3(0, 80, 0));
+
+			// земя
+			var geometry = new THREE.BoxGeometry(300, 4, 300),
+			material = Physijs.createMaterial(new THREE.MeshPhysicalMaterial({color: 'lightgreen'}), 1, 0);
+			var floor = new Physijs.BoxMesh(geometry, material, 0);
+			floor.position.set(0, -10, 0);
+			floor.receiveShadow = true;
+			VAX.scene.add(floor);
+
+			var sizeOfShape = 13;
+			function createLineShape() {
+				var materialLineShape = new Physijs.createMaterial(new THREE.MeshPhysicalMaterial({ 
+					color:  new THREE.Color(Math.random(), Math.random(), Math.random()) 
+				}));
+				var geometries = [] 
+
+				for (let i = 0; i < 4; i++) {
+					geometries[i] = new THREE.BoxGeometry(sizeOfShape, sizeOfShape, sizeOfShape);
+					geometries[i].translate(i*sizeOfShape, 0, 0);
+				}
+
+				var geometry = mergeGeometries(geometries);
+				geometry.translate(-3*sizeOfShape/2, 0, 0);
+				var lineShape = new Physijs.BoxMesh(geometry, materialLineShape);
+
+				var edges = new THREE.EdgesGeometry(geometry);
+				var edgeMaterial = new THREE.LineBasicMaterial({ color: 'black', linewidth: 3 });
+				var edgeLines = new THREE.LineSegments(edges, edgeMaterial);
+				lineShape.add(edgeLines);
+
+				lineShape.receiveShadow = true;
+				lineShape.castShadow = true;
+				return lineShape;
+			}
+
+			function createZShape() {
+				var materialZShape = new Physijs.createMaterial(new THREE.MeshPhysicalMaterial({ 
+					color:  new THREE.Color(Math.random(), Math.random(), Math.random()) 
+				}));
+
+				var geometriesUp = [];
+				var geometriesDown = [];
+				
+				var geometriesUp = [];
+				var geometriesDown = [];
+				
+				// create geometries for the top part
+				for (let i = 0; i < 2; i++) {
+					geometriesUp[i] = new THREE.BoxGeometry(sizeOfShape, sizeOfShape, sizeOfShape);
+					geometriesUp[i].translate(i * sizeOfShape, 0, 0);
+				}
+
+				// create geometries for the bottom part
+				for (let i = 0; i < 2; i++) {
+					geometriesDown[i] = new THREE.BoxGeometry(sizeOfShape, sizeOfShape, sizeOfShape);
+					geometriesDown[i].translate(i * sizeOfShape, 0, 0);
+				}
+
+				var geometryUp = mergeGeometries(geometriesUp);
+				geometryUp.translate(-sizeOfShape/2, 0, 0);
+				var geometryDown = mergeGeometries(geometriesDown);
+				geometryDown.translate(-sizeOfShape/2, 0, 0);
+
+				var zShape = new Physijs.BoxMesh(geometryUp, materialZShape);
+				var lowerBody = new Physijs.BoxMesh(geometryDown, materialZShape);
+				lowerBody.position.x = sizeOfShape;
+				lowerBody.position.y = -sizeOfShape;
+				zShape.add(lowerBody);
+
+				var edgesUp = new THREE.EdgesGeometry(geometryUp);
+				var edgesDown = new THREE.EdgesGeometry(geometryDown);
+				var edgeMaterial = new THREE.LineBasicMaterial({ color: 'black', linewidth: 3 });
+				var edgeLinesUp = new THREE.LineSegments(edgesUp, edgeMaterial);
+				var edgeLinesDown = new THREE.LineSegments(edgesDown, edgeMaterial);
+				edgeLinesDown.position.set(sizeOfShape, -sizeOfShape, 0);
+				zShape.add(edgeLinesUp);
+				zShape.add(edgeLinesDown);
+
+				zShape.receiveShadow = true;
+				zShape.castShadow = true;
+				return zShape;
+			}
+
+			var cupGeometry = new THREE.SphereGeometry(60, 32, 16, 0, 2*Math.PI, Math.PI/2, Math.PI/4, 1);
+			var cupMaterial = Physijs.createMaterial(new THREE.MeshPhysicalMaterial(
+			{
+				color: "white",
+				transparent: 1,
+				opacity: 0.3,
+				thickness: 1.5,
+				roughness: 0.14,
+				reflectivity: 0.7,
+				clearcoat: 1,
+				clearcoatRoughness: 0.1,
+				side: THREE.DoubleSide,
+				depthWrite: false,
+			}),
+			1, 0);
+			
+			var sphere = new THREE.Mesh(cupGeometry, cupMaterial, 0);
+			sphere.position.set(0, 40, 0);
+			sphere.receiveShadow = true;
+			sphere.castShadow = true;
+			sphere.renderOrder = 1;
+			sphere.castShadow = true;
+			sphere.receiveShadow = true;
+			VAX.scene.add(sphere);
+
+			// Create a circular wall with cylinders
+			var wallMaterial = Physijs.createMaterial(new THREE.MeshPhysicalMaterial({ 
+				transparent: true,
+				opacity: 0
+			}), 1, 0);
+			
+			var rows = 12;
+			var columns = 128;
+			var sphereRadius = 60;
+			function setPhysijsFromSphericalCoords(mesh, radius, theta, phi) {
+				var x = radius * Math.sin(phi) * Math.cos(theta);
+				var y = radius * Math.cos(phi) + 40;
+				var z = radius * Math.sin(phi) * Math.sin(theta);
+
+				mesh.position.set(x, y, z);
+			}
+
+			for (let row = 1; row <= rows; row++) {
+				// calculate the polar angle phi for each row
+				var phi = Math.PI - (Math.PI / 4) - (row / rows) * (Math.PI / 2)*0.48;
+
+				// use spherical coordinates to calculate the position for each block
+				for (let i = 0; i < columns; i++) {
+					var theta = (i / columns) * Math.PI * 2;  // Azimuthal angle for circular arrangement
+					theta += i*Math.PI/4;
+
+					var wall = new Physijs.BoxMesh(new THREE.BoxGeometry(1, 4, 4), wallMaterial, 0);
+					
+					setPhysijsFromSphericalCoords(wall, sphereRadius, theta, phi);
+
+					wall.rotation.y = -theta;
+
+					VAX.scene.add(wall);
+				}
+			}
+			
+			// add a flat ring as the base
+			var base = new Physijs.CylinderMesh(new THREE.CylinderGeometry(30*Math.sqrt(2), 30*Math.sqrt(2), 1, 32), cupMaterial, 0);
+			base.position.set(0, -2.5, 0);
+			base.receiveShadow = true;
+			base.castShadow = true;
+			VAX.scene.add(base);
+
+			var shapeSpawned = false;
+			var gameOver = false; 
+			function spawnRandomShape() {
+				if (shapeSpawned) 
+					return;
+				else {
+					var randomShape = Math.random() > 0.5 ? createZShape() : createLineShape();
+					randomShape.position.set(0, 240, 0);
+					randomShape.handleCollided = false;
+
+					randomShape.rotation.set(
+						THREE.MathUtils.randFloat(0, Math.PI * 2),
+						THREE.MathUtils.randFloat(0, Math.PI * 2),
+						THREE.MathUtils.randFloat(0, Math.PI * 2)
+					);
+					VAX.scene.add(randomShape);
+
+					randomShape.addEventListener('collision', function handleCollision (otherObject) {
+						if (!randomShape.hasCollided && 
+						(otherObject instanceof Physijs.BoxMesh || otherObject instanceof Physijs.CylinderMesh)) {
+							shapeSpawned = false;
+							randomShape.setAngularVelocity(new THREE.Vector3(THREE.MathUtils.randFloat(-1, 1), 0, THREE.MathUtils.randFloat(-1, 1)));
+							randomShape.hasCollided = true;
+						}
+
+						if (otherObject === floor) {
+							gameOver = true;
+						}
+					});
+					
+
+					shapeSpawned = true;
+				}
+			}
+
+			spawnRandomShape();
+
+			function animate(t)
+			{
+				VAX.scene.simulate(1/10);
+
+				if (!gameOver && !shapeSpawned) {
+					spawnRandomShape();
+				}
+				VAX.scene.rotation.y = t/10;
+			}
+			
+		</script>
+	</body>
+</html>
+
+

@@ -1,0 +1,569 @@
+﻿<!DOCTYPE html>
+
+<html>
+	<head>
+		<title>Тема 4: Горски парк</title>
+		<meta charset="utf-8">
+		
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		
+		<script type="importmap">
+		  {
+			"imports": {
+			  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+			  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+			  "vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+			}
+		  }
+		</script>
+	</head>
+	
+	<body>
+		<script type="module">
+			import * as THREE from "three";
+			import * as VAX from "vax";
+
+			VAX.initScene(animate, VAX.initAnaglyph);
+
+			VAX.camera.focus = 3;
+			VAX.camera.position.set(0, 80, 100);
+			VAX.camera.lookAt(new THREE.Vector3(0, 50, 0));
+
+			VAX.spotLight.intensity = 3;
+			VAX.scene.remove(VAX.object);
+			VAX.scene.remove(VAX.ground);
+
+			// Създаване на крива за река
+			var riverPoints = [
+				new THREE.Vector3(100, 30, -25),
+				new THREE.Vector3(65, 30, -5),
+				new THREE.Vector3(30, 20, -35),
+				new THREE.Vector3(-55, 20, -27),
+				new THREE.Vector3(-78, 20, 42),
+				new THREE.Vector3(-100, 20, 23)
+			];
+
+			var curve = new THREE.CatmullRomCurve3(riverPoints);
+			var geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(200));
+
+			function getDistanceToRiver(x, z) {
+				var curvePoints = curve.getPoints(200);
+				var minDistance = Infinity;
+				
+				for (var i = 0; i < curvePoints.length - 1; i++) {
+					var p1 = curvePoints[i];
+					var p2 = curvePoints[i + 1];
+
+					var distance = distanceToSegment(x, z, p1.x, p1.z, p2.x, p2.z);
+					
+					if (distance < minDistance) {
+						minDistance = distance;
+					}
+				}
+				
+				return minDistance;
+			}
+
+			// Функция за изчисляване на разстоянието от точка до сегмент
+			function distanceToSegment(x, z, x1, z1, x2, z2) {
+				var dx = x2 - x1;
+				var dz = z2 - z1;
+				var lengthSquared = dx * dx + dz * dz;
+				var t = ((x - x1) * dx + (z - z1) * dz) / lengthSquared;
+
+				t = Math.max(0, Math.min(1, t));
+
+				var closestX = x1 + t * dx;
+				var closestZ = z1 + t * dz;
+
+				var dxClosest = x - closestX;
+				var dzClosest = z - closestZ;
+
+				return Math.sqrt(dxClosest * dxClosest + dzClosest * dzClosest);
+			}
+
+			var riverWidth = 3;
+			var riverDepth = 7;
+
+			// Добавяме наклонен терен с неравности
+			var terrainGeometry = new THREE.PlaneGeometry(200, 200, 70, 70);
+			terrainGeometry.rotateX(-Math.PI / 2);
+						
+			var terrainHeights = [];
+			var position = terrainGeometry.attributes.position;
+			for (var i = 0; i < position.count; i++) {
+				var x = position.getX(i);
+				var z = position.getZ(i);
+				var y = Math.sin(x / 20) * 5 + Math.cos(z / 20) * 2; // Неравности
+				
+				// Наклон от единия край към другия
+				y += x / 3; 
+				
+				// Изкоп за езерцето
+				if (x > 10 && x < 50 && z > -50 && z < -20) {
+					y -= 10 - Math.sqrt((x - 30) ** 2 + (z + 35) ** 2) / 2;
+				}
+				
+				// Запазвам височината преди реката 
+				terrainHeights.push(y);
+				
+				// Вдлъбване на реката
+				var distanceToRiver = getDistanceToRiver(x, z);
+				if (distanceToRiver < riverWidth) {
+					y -= riverDepth * (1 - distanceToRiver / riverWidth);
+				}
+				
+				position.setY(i, y);
+			}
+			terrainGeometry.computeVertexNormals();
+			
+			var terrainMaterial = new THREE.MeshLambertMaterial({ color: 0x7B9C87 });
+			var terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
+			VAX.scene.add(terrain);
+			
+			function getTerrainHeight(x, z) {
+				var vertices = terrainGeometry.attributes.position;
+				var gridSize = Math.sqrt(vertices.count);
+				var xIndex = Math.round(((x + 100) / 200) * (gridSize - 1));
+				var zIndex = Math.round(((z + 100) / 200) * (gridSize - 1));
+				var index = zIndex * gridSize + xIndex;
+				return vertices.getY(index);
+			}
+			
+			// Вода в реката
+			var tileGeometry = new THREE.BoxGeometry(5, 0.5, 5);
+			var tileMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff });
+
+			var tiles = [];
+
+			for (var i = 0; i < 100; i++) {
+				var tile = new THREE.Mesh(tileGeometry, tileMaterial);
+				tiles.push(tile);
+				VAX.scene.add(tile);
+			}
+
+			// Функция за обновяване на позицията на плочките
+			function updateTiles(t) {
+				tiles.forEach((tile, index) => {
+					var time = (t + index * 10) % 1000 / 1000;
+					var curvePoint = curve.getPointAt(time);
+					var height = terrainHeights[Math.round(((curvePoint.x + 100) / 200) * (Math.sqrt(position.count) - 1))] - riverDepth + 4;
+
+					// Актуализиране на позицията на плочката
+					tile.rotation.set(0, Math.atan2(curve.getTangentAt(time).z, curve.getTangentAt(time).x), Math.PI / 12, "ZYX");
+					if (curvePoint.x >= 45 && curvePoint.x < 100) {
+						tile.position.set(curvePoint.x, height + 1, curvePoint.z);
+					}
+					if (curvePoint.x >= 35 && curvePoint.x < 45) {
+						tile.position.set(curvePoint.x, height - 3*(5-5*curvePoint.x/45), curvePoint.z);
+					}
+					if (curvePoint.x > 13 && curvePoint.x <= 35) {
+						tile.position.set(curvePoint.x, height - 10, curvePoint.z);
+					}
+					if (curvePoint.x > -60 && curvePoint.x <= 13) {
+						tile.position.set(curvePoint.x, height - 1, curvePoint.z);
+					}
+					if (curvePoint.x > -70 && curvePoint.x <= -60) {
+						tile.position.set(curvePoint.x, height + 0.4, curvePoint.z);
+						tile.rotation.set(0, Math.atan2(curve.getTangentAt(time).z, curve.getTangentAt(time).x), 0);
+					}
+					if (curvePoint.x >= -80 && curvePoint.x <= -70){
+						tile.position.set(curvePoint.x, height - 0.2, curvePoint.z);
+						tile.rotation.set(0, Math.atan2(curve.getTangentAt(time).z, curve.getTangentAt(time).x), 0);
+					}
+					if (curvePoint.x >= -100 && curvePoint.x <= -80){
+						tile.position.set(curvePoint.x, height - 1, curvePoint.z);
+						tile.rotation.set(0, Math.atan2(curve.getTangentAt(time).z, curve.getTangentAt(time).x), 0);
+					}
+					
+				});
+			}
+			
+			// Добавяме овално езерце
+			var lakeRadius = 20;
+			var lakeGeometry = new THREE.CircleGeometry(lakeRadius, 32);
+			var lakeMaterial = new THREE.MeshLambertMaterial({ color: 0x1e90ff});
+			var lake = new THREE.Mesh(lakeGeometry, lakeMaterial);
+			lake.rotation.set(-Math.PI / 2, 0, Math.PI / 12, "ZYX");
+			var lakeX = 30;
+			var lakeZ = -35;
+			lake.position.set(lakeX, getTerrainHeight(lakeX, lakeZ) + riverDepth + 3.5, lakeZ);
+			VAX.scene.add(lake);
+
+			var trees = [];
+
+			// Функция за създаване на елха
+			function createFir(x, z, t) {
+				var group = new THREE.Group();
+
+				var y = getTerrainHeight(x, z) - 1;
+
+				// Ствол
+				var trunkGeometry = new THREE.CylinderGeometry(2*t, 2*t, 10*t);
+				var trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8b4513 });
+				var trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+				trunk.position.set(0, 5*t, 0);
+
+				// Първи слой от клони
+				var treeLayer1Geometry = new THREE.ConeGeometry(10*t, 15*t);
+				var treeLayer1Material = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+				var treeLayer1 = new THREE.Mesh(treeLayer1Geometry, treeLayer1Material);
+				treeLayer1.position.set(0, 15*t, 0);
+
+				// Втори слой от клони
+				var treeLayer2Geometry = new THREE.ConeGeometry(8*t, 12*t);
+				var treeLayer2Material = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+				var treeLayer2 = new THREE.Mesh(treeLayer2Geometry, treeLayer2Material);
+				treeLayer2.position.set(0, 25*t, 0);
+
+				// Трети слой от клони
+				var treeLayer3Geometry = new THREE.ConeGeometry(6*t, 10*t);
+				var treeLayer3Material = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+				var treeLayer3 = new THREE.Mesh(treeLayer3Geometry, treeLayer3Material);
+				treeLayer3.position.set(0, 35*t, 0);
+
+				group.add(trunk);
+				group.add(treeLayer1);
+				group.add(treeLayer2);
+				group.add(treeLayer3);
+
+				group.position.set(x, y, z);
+				VAX.scene.add(group);
+
+				trees.push({
+					group,
+					baseRotation: Math.random() * Math.PI * 2,
+					swaySpeed: Math.random() * 0.5 + 0.5,
+					swayAmplitude: Math.random() * 0.05 + 0.02
+				});
+			}
+
+			function createBush(x, y, z, size) {
+				var colorVariations = [0x3CB371, 0x2E8B57, 0x66CDAA];
+				var randomColor = colorVariations[Math.floor(Math.random() * colorVariations.length)];
+				var sphereMaterial = new THREE.MeshLambertMaterial({ color: randomColor });
+
+				var mainSphereGeometry = new THREE.SphereGeometry(size, 16, 16);
+				var mainSphere = new THREE.Mesh(mainSphereGeometry, sphereMaterial);
+				mainSphere.position.set(x, y + size, z);
+				VAX.scene.add(mainSphere);
+
+				var offsets = [
+					{ x: -size * 0.6, y: size * 0.2, z: size * 0.4 },
+					{ x: size * 0.6, y: size * 0.2, z: -size * 0.4 },
+					{ x: 0, y: size * 0.2, z: size * 0.8 },
+					{ x: 0, y: size * 0.2, z: -size * 0.8 },
+					{ x: size * 0.4, y: size * 0.5, z: size * 0.4 },
+					{ x: -size * 0.4, y: size * 0.5, z: -size * 0.4 }
+				];
+
+				var randomOffset = () => (Math.random() - 0.5) * size * 0.5;
+
+				offsets.forEach(offset => {
+					var smallerSphereGeometry = new THREE.SphereGeometry(size * 0.7, 16, 16);
+					var smallerSphere = new THREE.Mesh(smallerSphereGeometry, sphereMaterial);
+
+					smallerSphere.position.set(
+						x + offset.x + randomOffset(),
+						y + offset.y + randomOffset(),
+						z + offset.z + randomOffset()
+					);
+
+					VAX.scene.add(smallerSphere);
+				});
+			}
+
+			var deciduousTrees = [];
+			function createDeciduousTree(x, y, z, trunkHeight, crownSize) {
+				var group = new THREE.Group();
+
+				var trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+				var crownMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+
+				var trunkGeometry = new THREE.CylinderGeometry(trunkHeight * 0.1, trunkHeight * 0.2, trunkHeight, 16);
+				var trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+				trunk.position.set(0, trunkHeight / 2, 0);
+				group.add(trunk);
+
+				var crownLayers = 3;
+				for (var i = 0; i < crownLayers; i++) {
+					var layerSize = crownSize * (1 - i * 0.3);
+					var crownGeometry = new THREE.SphereGeometry(layerSize, 16, 16);
+					var crown = new THREE.Mesh(crownGeometry, crownMaterial);
+
+					crown.position.set(
+						(Math.random() - 0.5) * crownSize * 0.3,
+						trunkHeight + i * (crownSize * 0.6),
+						(Math.random() - 0.5) * crownSize * 0.3
+					);
+
+					group.add(crown);
+				}
+
+				group.position.set(x, y, z);
+				VAX.scene.add(group);
+
+				deciduousTrees.push({
+					group,
+					baseRotation: Math.random() * Math.PI * 2,
+					swaySpeed: Math.random() * 0.5 + 0.5,
+					swayAmplitude: Math.random() * 0.05 + 0.02
+				});
+			}
+
+			var clouds = [];
+			function createCloud(x, y, z, scale) {
+				var cloudMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff, opacity: 0.8, transparent: true });
+
+				var sphere1 = new THREE.Mesh(new THREE.SphereGeometry(4 * scale, 16, 16), cloudMaterial);
+				var sphere2 = new THREE.Mesh(new THREE.SphereGeometry(5 * scale, 16, 16), cloudMaterial);
+				var sphere3 = new THREE.Mesh(new THREE.SphereGeometry(2 * scale, 16, 16), cloudMaterial);
+
+				sphere1.position.set(x - 6 * scale, y, z);
+				sphere2.position.set(x, y, z);
+				sphere3.position.set(x + 6 * scale, y, z);
+
+				var cloud = new THREE.Group();
+				cloud.add(sphere1);
+				cloud.add(sphere2);
+				cloud.add(sphere3);
+
+				cloud.rotation.y = Math.random() * Math.PI;
+				cloud.userData = {
+					amplitude: Math.random() * 5 + 2,
+					speed: Math.random() * 0.01 + 0.02,
+					baseY: y
+				};
+
+				VAX.scene.add(cloud);
+				clouds.push(cloud);
+			}
+
+			function createRock(x, y, z, t) {
+				var rockGeometry = new THREE.SphereGeometry(1 * t, 16, 16);
+				var rockMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+				var rock = new THREE.Mesh(rockGeometry, rockMaterial);
+
+				rock.position.set(x, y, z);
+				VAX.scene.add(rock);
+			}
+
+			function createBridge(x, z, width, length) {
+				var group = new THREE.Group();
+				var bridgeMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+
+				var plankHeight = 1;
+				var plankWidth = width;
+				var plankLength = length / 8;
+
+				for (var i = 0; i < 8; i++) {
+					var plank = new THREE.Mesh(
+						new THREE.BoxGeometry(plankWidth, plankHeight, plankLength),
+						bridgeMaterial
+					);
+
+					var curveFactor = Math.sin((i / 8) * Math.PI);
+					var heightOffset = 5 * curveFactor;
+
+					plank.position.set(x, getTerrainHeight(x, z) + plankHeight / 2 + heightOffset + 12, z + (i - 3) * plankLength);
+					plank.rotation.x = Math.sin(3*Math.PI/2 + 0.3 + i*((Math.PI - 0.6)/8));
+					group.add(plank);
+				}
+				group.rotation.z = Math.PI/12;
+				VAX.scene.add(group);
+			}
+
+			function createFlower(x, z) {
+				var stemMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+				var flowerMaterial = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+
+				var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1, 8), stemMaterial);
+				stem.position.set(x, getTerrainHeight(x, z) + 0.5, z);
+
+				var flower = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), flowerMaterial);
+				flower.position.set(x, getTerrainHeight(x, z) + 1, z);
+
+				var leaves = [];
+				for (var i = 0; i < 5; i++) {
+					var leaf = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), flowerMaterial);
+					var angle = (i / 5) * Math.PI * 2;
+					var radius = 0.8;
+
+					leaf.position.set(
+						x + radius * Math.cos(angle), 
+						getTerrainHeight(x, z) + 1.1 + Math.random() * 0.2,
+						z + radius * Math.sin(angle)
+					);
+
+					leaf.rotation.z = Math.random() * Math.PI;
+
+					leaves.push(leaf);
+				}
+
+				var flowerGroup = new THREE.Group();
+				flowerGroup.add(stem);
+				flowerGroup.add(flower);
+				leaves.forEach(leaf => flowerGroup.add(leaf));
+
+				VAX.scene.add(flowerGroup);
+			}
+
+			function isInLake(x, z) {
+				var distance = Math.sqrt((x - lakeX) ** 2 + (z - lakeZ) ** 2);
+				return distance < lakeRadius;
+			}
+
+			function isNearOtherEntities(x, z, existingTrees, minDistance) {
+				for (var tree of existingTrees) {
+					var distance = Math.sqrt((x - tree.x) ** 2 + (z - tree.z) ** 2);
+					if (distance < minDistance) return true;
+				}
+				return false;
+			}
+
+			var existingTrees = [];
+			var existingBushes = [];
+			var minDistanceBetweenEntities = 8;
+
+			// Елхичките
+			for (var i = 0; i < 20; i++) {
+				var x, z;
+				var attempts = 0;
+				do {
+					x = Math.random() * 200 - 100;
+					z = Math.random() * 200 - 100;
+					attempts++;
+				} while (
+					(isInLake(x, z) || getDistanceToRiver(x, z) < riverWidth || isNearOtherEntities(x, z, existingTrees, minDistanceBetweenEntities)) &&
+					attempts < 100
+				);
+
+				if (attempts < 100) {
+					createFir(x, z, Math.random() * (0.8 - 0.6) + 0.6);
+					existingTrees.push({ x, z });
+				}
+			}
+
+			// Храстите
+			for (var i = 0; i < 50; i++) {
+				var x, z;
+				var attempts = 0;
+				do {
+					x = Math.random() * 200 - 100;
+					z = Math.random() * 200 - 100;
+					attempts++;
+				} while (
+					(isInLake(x, z) || getDistanceToRiver(x, z) < riverWidth || isNearOtherEntities(x, z, [...existingTrees, ...existingBushes], minDistanceBetweenEntities)) &&
+					attempts < 100
+				);
+
+				if (attempts < 100) {
+					var y = getTerrainHeight(x, z);
+					createBush(x, y, z, Math.random() * (3 - 1.5) + 1.5);
+					existingBushes.push({ x, z });
+				}
+			}
+
+			// Широколистни дървета
+			for (var i = 0; i < 18; i++) {
+				var x, z;
+				var attempts = 0;
+				do {
+					x = Math.random() * 200 - 100;
+					z = Math.random() * 200 - 100;
+					attempts++;
+				} while (
+					(isInLake(x, z) || getDistanceToRiver(x, z) < riverWidth || isNearOtherEntities(x, z, [...existingTrees, ...existingBushes], minDistanceBetweenEntities)) &&
+					attempts < 100
+				);
+
+				if (attempts < 100) {
+					var y = getTerrainHeight(x, z);
+					createDeciduousTree(x, y, z, 12, 7);
+					existingTrees.push({ x, z });
+				}
+			}
+
+			// Облаци
+			for (var i = 0; i < 7; i++) {
+				createCloud(
+					Math.random() * 200 - 100, 
+					Math.random() * 25 + 35, 
+					Math.random() * 200 - 100, 
+					Math.random() * 1.5 + 0.5
+				);
+			}
+
+			var curvePoints = curve.getPoints(200);
+			// Камъчета до реката
+			for (var i = 10; i < 180; i ++) {
+				var point = curvePoints[i];
+
+				var signX = Math.random() < 0.5 ? -1 : 1;
+				var signZ = Math.random() < 0.5 ? -1 : 1;
+
+				var offsetX = Math.random() * 10;
+				var offsetZ = Math.random() * 10;
+
+				var x = point.x + signX * Math.max(5, offsetX);
+				var z = point.z + signZ * Math.max(5, offsetZ);
+
+				var y = getTerrainHeight(x, z);
+				
+				createRock(x, y, z, Math.random() * (1.3 - 1) + 1);
+			}
+
+			// Създаване на мостче
+			createBridge(-35, -35, 15, 25);
+
+			// Създаване на цветя
+			for (var i = 0; i < 50; i++) {
+				var x = Math.random() * 200 - 100;
+				var z = Math.random() * 200 - 100;
+
+				do {
+					x = Math.random() * 200 - 100;
+					z = Math.random() * 200 - 100;
+					attempts++;
+				} while ((isInLake(x, z) || getDistanceToRiver(x, z) < riverWidth));
+
+				if (attempts < 100) {
+					createFlower(x, z);
+				}
+			}
+
+			function animate(t)
+			{
+				updateTiles(t*10);
+
+				// Люлеене на дърветата
+				trees.forEach(tree => {
+					var sway = Math.sin(2 * t * tree.swaySpeed) * tree.swayAmplitude;
+					tree.group.rotation.z = sway;
+					tree.group.rotation.y = tree.baseRotation + sway * 0.5;
+				});
+
+				deciduousTrees.forEach(tree => {
+					var sway = Math.sin(3 * t * tree.swaySpeed) * tree.swayAmplitude;
+					tree.group.rotation.z = sway;
+					tree.group.rotation.y = tree.baseRotation + sway * 0.3;
+				});
+
+				// Движение на облаците
+				clouds.forEach(cloud => {
+					var userData = cloud.userData;
+					cloud.position.y = userData.baseY + userData.amplitude * Math.sin(t * 50 * userData.speed);
+				});
+
+				var cameraDistance = 80 + 30 * Math.cos(t * 0.4);
+    			VAX.camera.position.set(0, cameraDistance, 150);
+				
+				VAX.spotLight.position.setFromSphericalCoords(200, Math.PI/5, -t/3);
+				VAX.scene.rotation.y = t/3;
+			}
+			
+		</script>
+	</body>
+</html>
+
+

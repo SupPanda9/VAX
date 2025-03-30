@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wave Effect with Three.js and VAX</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <script type="importmap">
+      {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
+            "vax": "https://boytchev.github.io/CourseVAX/lib/vax.js"
+        }
+      }
+    </script>
+</head>
+
+<body>
+    <script type="module">
+        import * as THREE from "three";
+        import * as VAX from "vax";
+
+        VAX.init(animate);
+        VAX.scene.background  = new THREE.Color(0xF5EED4);
+        VAX.renderer.shadowMap.enabled = true;
+
+        // Create lights
+        VAX.scene.remove(VAX.light);
+
+        var ambientLight = new THREE.AmbientLight(0xffffff, 3);
+        VAX.scene.add(ambientLight);
+
+        var pointLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        pointLight.position.set(0, 200, 200);
+        pointLight.castShadow = true; 
+        VAX.scene.add(pointLight);
+        
+        var lightOverWater = new THREE.PointLight('white', 4000, 150);
+        lightOverWater.position.set(50, 75, 0);
+        lightOverWater.castShadow = true;
+        VAX.scene.add(lightOverWater);
+
+        // Create island
+        var islandGeometry = new THREE.SphereGeometry(17);
+        var islandMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xD7D1A0,
+            roughness: 1000,
+            reflectivity: 0.0005
+        });
+        var island = new THREE.Mesh(islandGeometry, islandMaterial);
+        island.scale.set(1, 0.4, 1);
+        island.position.set(0, -2, 0);
+        island.receiveShadow = true;
+        VAX.scene.add(island);
+
+        // Create grid of tiles
+        var tileGeometry = new THREE.PlaneGeometry(5, 5);
+        var tileMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x5F95F1,  
+            transparent: true,
+            opacity: 0.5,
+            shininess: 100
+        });  
+        var cols = 25, rows = 25;  
+        var tiles = [];
+        var tilesGroup = new THREE.Group();
+        VAX.scene.add(tilesGroup);
+        
+        // Create riverBottom
+        var material = new THREE.MeshBasicMaterial({ 
+            color: 'lightblue'
+        });  
+        
+        var riverBottom = new THREE.Mesh(new THREE.PlaneGeometry(150, 150), material)
+        riverBottom.rotation.set(-Math.PI/2, 0, 0);
+        riverBottom.position.y = -3;
+        tilesGroup.add(riverBottom);
+
+        for (var i = 0; i < rows; i++) {
+            for (var j = 0; j < cols; j++) {
+                var tile = new THREE.Mesh(tileGeometry, tileMaterial);
+                tile.rotation.x = -Math.PI/2;
+                tile.position.set(j * 5 - (cols * 2.5), 0, i * 5 - (rows * 2.5));
+                tiles.push(tile);
+                tilesGroup.add(tile);
+            }
+        }
+        
+        // Body
+        var crocodileGroup = new THREE.Group();
+        var bodyMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x67D02A 
+        });
+        var body = new THREE.Mesh(new THREE.BoxGeometry(4.5, 3, 7), bodyMaterial);
+        body.position.set(0, 2, -3);
+        body.castShadow = true;
+
+        // Spikes
+        function createSpike(xOffset, yOffset, zOffset, size) {
+            var spikeMaterial = new THREE.MeshPhongMaterial({ color: 0x108138 });
+            var spikeGeometry = new THREE.ConeGeometry(0.5, 1);
+            var spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
+            
+            spike.scale.set(0.5, size, 1);
+            spike.position.set(xOffset, yOffset, zOffset);
+            
+            return spike;
+        }
+
+        var spikeGroup = new THREE.Group();
+        crocodileGroup.add(spikeGroup);
+
+        var numberOfRows = 5;
+        var rowSpacing = 1;
+        var rowOffsets = [-1, 1];
+
+        for (var i = 0; i < numberOfRows; i++) {
+            var zOffset = -5 + i * rowSpacing;
+            var spikeSize = 0.5 + 0.5*Math.sin(Math.PI * (i / numberOfRows) + Math.PI/(numberOfRows*2));
+
+            rowOffsets.forEach(xOffset => {
+                spikeGroup.add(createSpike(xOffset, 3.5 + spikeSize / 2, zOffset, spikeSize));
+            });
+        }
+        crocodileGroup.add(spikeGroup);
+
+
+        // Legs 
+        function createLeg(xOffset, zOffset, isLeftLeg) {
+            var legMaterial = new THREE.MeshPhongMaterial({ color: 0x67D02A });
+            
+            var upperLeg = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1), legMaterial);
+            upperLeg.position.set(xOffset, 0.75, zOffset);
+            upperLeg.rotation.z = isLeftLeg ? -Math.PI/12 : Math.PI/12;
+            upperLeg.castShadow = true;
+
+            var lowerLeg = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), legMaterial);
+            lowerLeg.position.x = isLeftLeg ? xOffset + 0.75 : xOffset - 0.75; 
+            lowerLeg.position.z = zOffset;
+            lowerLeg.castShadow = true;
+
+            var foot = new THREE.Mesh(new THREE.BoxGeometry(1, 0.5, 1.5), legMaterial);
+            foot.position.x = isLeftLeg ? xOffset + 0.75 : xOffset - 0.75; 
+            foot.position.y = -1;
+            foot.position.z = zOffset + 0.25;
+            foot.castShadow = true;
+
+            var legGroup = new THREE.Group();
+            legGroup.add(upperLeg);
+            legGroup.add(lowerLeg);
+            legGroup.add(foot);
+            
+            return legGroup;
+        }
+
+        var frontLeftLeg = createLeg(3, -2, true);  // Front left leg
+        var frontRightLeg = createLeg(-3, -2, false); // Front right leg
+        var backLeftLeg = createLeg(3, -6, true);    // Back left leg
+        var backRightLeg = createLeg(-3, -6, false);   // Back right leg
+
+        crocodileGroup.add(frontLeftLeg);
+        crocodileGroup.add(frontRightLeg);
+        crocodileGroup.add(backLeftLeg);
+        crocodileGroup.add(backRightLeg);
+
+        // Tail
+        var tailGroup = new THREE.Group();
+        tailGroup.position.set(0, 0, -5.5);
+        var tailMaterial = new THREE.MeshPhongMaterial({
+            color: 0x67D02A
+        });
+        var tailGeometry = new THREE.CylinderGeometry(3, 0.5, 10, 4);
+        tailGeometry.rotateY(Math.PI / 4);
+        var tail = new THREE.Mesh(tailGeometry, tailMaterial);
+        tail.scale.set(1, 1, 0.7);
+        tail.rotation.x = Math.PI / 2;
+        tail.position.set(0, 2, -5);
+        tail.castShadow = true;
+        tailGroup.add(tail);
+
+        var tailSpikeGroup = new THREE.Group();
+        tailGroup.add(tailSpikeGroup);
+
+        var numberOfTailSpikes = 7;
+        var tailSpikeSpacing = 10/7;
+
+        for (var i = 0; i < numberOfTailSpikes; i++) {
+            var zOffset = -tailSpikeSpacing/2 -i * tailSpikeSpacing;
+            var tailSpikeHeight = 0.5 + 0.5*Math.sin(Math.PI * (i / numberOfTailSpikes) + Math.PI/(numberOfTailSpikes*2));
+            var spike = createSpike(0, 3.4 + tailSpikeHeight / 2 - i * 0.18, zOffset, tailSpikeHeight);
+            spike.rotation.x = -Math.PI/20;
+            tailSpikeGroup.add(spike);
+        }
+        
+        // Jaws
+        var upperJawGroup = new THREE.Group();
+        var upperJaw = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 5), bodyMaterial);
+        upperJaw.position.set(0, 0, 2.5);
+        upperJaw.castShadow = true;
+        upperJawGroup.position.set(0, 2.5, 0);
+        upperJawGroup.add(upperJaw);
+        
+        var lowerJawGroup = new THREE.Group();
+        var lowerJaw = new THREE.Mesh(new THREE.BoxGeometry(3, 0.5, 5), bodyMaterial);
+        lowerJaw.position.set(0, 0, 2.5);
+        lowerJaw.castShadow = true;
+        lowerJawGroup.position.set(0, 1, 0);
+        lowerJawGroup.add(lowerJaw);
+        
+        var snoutMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
+        var leftSnout = new THREE.Mesh(new THREE.SphereGeometry(0.2), snoutMaterial);
+        leftSnout.position.set(1, 0, 2.5);
+        leftSnout.scale.set(1, 1, 0.2);
+        upperJaw.add(leftSnout);
+        
+        var rightSnout = new THREE.Mesh(new THREE.SphereGeometry(0.2), snoutMaterial);
+        rightSnout.position.set(-1, 0, 2.5);
+        rightSnout.scale.set(1, 1, 0.2);
+        upperJaw.add(rightSnout);
+        
+        // Tissue in mouth
+        var tissueMaterial = new THREE.MeshBasicMaterial({ color: 0xFF0000 });
+        
+        var upperMouthTissue = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 4.5), tissueMaterial);
+        upperMouthTissue.rotation.set(Math.PI/2, 0, 0);
+        upperMouthTissue.position.set(0, -0.751, 0);
+        upperJaw.add(upperMouthTissue);
+        
+        var lowerMouthTissue = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 4.5), tissueMaterial);
+        lowerMouthTissue.rotation.set(-Math.PI/2, 0, 0);
+        lowerMouthTissue.position.set(0, 0.251, 0);
+        lowerJaw.add(lowerMouthTissue);
+        
+        // Teeth
+        var toothGeometry = new THREE.ConeGeometry(0.2, 0.4, 4);
+        var toothMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0xFFFFFF
+        });
+        
+        function addTooth(position, rotation) {
+            var tooth = new THREE.Mesh(toothGeometry, toothMaterial);
+            tooth.position.set(position.x, position.y, position.z);
+            tooth.rotation.set(rotation.x, rotation.y, rotation.z);
+            upperJawGroup.add(tooth);
+        }
+        
+        // Add teeth on the front edge of the upper jaw
+        for (var i = -0.9; i <= 0.9; i += 0.6) {
+            addTooth(
+                { x: i, y: -0.9, z: 4.8},
+                { x: Math.PI, y: 0, z: 0 }
+            );
+        }
+        
+        // Add teeth on the left side of the upper jaw
+        for (var i = 4.8; i >= 0.4; i -= 0.6) {
+            addTooth(
+                { x: -1.35, y: -0.9, z: i },
+                { x: 0, y: 0, z: Math.PI + Math.PI / 6}
+            );
+        }
+        
+        // Add teeth on the right side of the upper jaw
+        for (var i = 4.8; i >= 0.4; i -= 0.6) {
+            addTooth(
+                { x: 1.35, y: -0.9, z: i },
+                { x: 0, y: 0, z: Math.PI - Math.PI / 6}
+            );
+        }
+        
+        function addLowerJawTooth(position, rotation) {
+            var tooth = new THREE.Mesh(toothGeometry, toothMaterial);
+            tooth.position.set(position.x, position.y, position.z);
+            tooth.rotation.set(rotation.x, rotation.y, rotation.z);
+            lowerJawGroup.add(tooth);
+        }
+        
+        // Add teeth on the left side of the lower jaw
+        for (var i = 4.5; i >= 0.6; i -= 0.6) {
+            addLowerJawTooth(
+                { x: -1.35, y: 0.4, z: i },
+                { x: Math.PI, y: 0, z: Math.PI + Math.PI / 6}
+            );
+        }
+        
+        // Add teeth on the right side of the lower jaw
+        for (var i = 4.5; i >= 0.6; i -= 0.6) {
+            addLowerJawTooth(
+                { x: 1.35, y: 0.4, z: i },
+                { x: Math.PI, y: 0, z: Math.PI - Math.PI / 6 }
+            );
+        }
+        
+        // Eyes
+        var eyes = new THREE.Group();
+        var eyeMaterial = new THREE.MeshBasicMaterial({ color: 'white' });
+        var pupilMaterial = new THREE.MeshBasicMaterial({ color: 'black' });
+        
+        var leftEyelid = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.5), bodyMaterial);
+        leftEyelid.position.set(1, 3.9, 0);
+        eyes.add(leftEyelid);
+        
+        var rightEyelid = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 0.5), bodyMaterial);
+        rightEyelid.position.set(-1, 3.9, 0);
+        eyes.add(rightEyelid);
+        
+        var leftEye = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.75), eyeMaterial);
+        leftEye.position.set(1, 3.9, 0.251);
+        eyes.add(leftEye);
+        
+        var rightEye = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.75), eyeMaterial);
+        rightEye.position.set(-1, 3.9, 0.251);
+        eyes.add(rightEye);
+        
+        var leftPupil = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 32), pupilMaterial);
+        leftPupil.position.set(1, 3.9, 0.25);
+        leftPupil.scale.set(1, 1, 0.2);
+        eyes.add(leftPupil);
+        
+        var rightPupil = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 32), pupilMaterial);
+        rightPupil.position.set(-1, 3.9, 0.25);
+        rightPupil.scale.set(1, 1, 0.2);
+        eyes.add(rightPupil);
+        
+        // Add crocodile parts
+        crocodileGroup.add(body);
+        crocodileGroup.add(upperJawGroup);
+        crocodileGroup.add(lowerJawGroup);
+        crocodileGroup.add(eyes);
+        crocodileGroup.add(tailGroup); 
+        
+        // Set position of the crocodile on the island
+        crocodileGroup.position.set(0, 5.7, 5);
+        VAX.scene.add(crocodileGroup);
+        
+        // Initialize camera parameters
+        var angle = 0; 
+        var radius = 30;
+
+        function animate(t) {
+            // Apply wave effect to each tile
+            for (var tile of tiles) {
+                var x = tile.position.x;
+                var z = tile.position.z;
+                var waveAmplitude = 1.1;
+                var waveFrequency = 0.1;
+                var waveSpeed = 2;
+                
+                tile.position.y = Math.sin(waveFrequency * (x + 5 * t * waveSpeed)) * waveAmplitude;
+                tile.position.x += Math.sin(waveFrequency * (z + 5 * t * waveSpeed)) * 0.05;
+            }
+            
+            tilesGroup.position.set(0, 0, 10);
+            angle += 0.005;
+            VAX.camera.position.x = radius * Math.cos(angle);
+            VAX.camera.position.z = radius * Math.sin(angle);
+            VAX.camera.position.y = 15; 
+            VAX.camera.lookAt(island.position);
+            
+            // Animate jaws            
+            var maxOpenAngle = Math.PI / 6;
+            var jawOpen = Math.sin(t * 2) * 0.3;
+            upperJawGroup.rotation.x = Math.min(0, Math.max(-jawOpen, -maxOpenAngle));
+            lowerJawGroup.rotation.x = Math.max(0, Math.min(jawOpen, maxOpenAngle));
+            
+            // wag tail
+            var tailWagAmplitude = Math.PI / 8;
+            var tailWagSpeed = 2;
+            tailGroup.rotation.y = Math.sin(t * tailWagSpeed) * tailWagAmplitude;
+        }
+        </script>
+</body>
+</html>
