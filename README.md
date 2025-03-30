@@ -22,13 +22,13 @@ A transparent cup that fills with Tetris blocks until one block falls out.
 
 ## 🌲 Forest Park Diorama  
 A 3D model of a forest park with a running river, terrain slopes, and a curved water path. Designed for **anaglyph glasses**.  
-[![Forest Park Diorama](media/thumbnail_forest_park_diorama.png)](https://suppanda9.github.io/VAX/Forest%20Park%20Diorama/Forest%20Park%20Diorama.html)  
+[![Forest Park Diorama](media/thumbnail_forest_park_diorama.png)](https://suppanda9.github.io/VAX/Forest%20Park%20Diorama/ForestParkDiorama.html)  
 
 ---
 
 ## 📱 Phone Operated Cube with Pyramids  
 A 3D simulation of pyramids pointing to the center of a cube. Designed for **stereo glasses & phone sensors**.  
-[![Cube with Pyramids](media/thumbnail_cube_pyramids.png)](https://suppanda9.github.io/VAX/Phone%20Operated%20Cube%20with%20Pyramids.html)  
+[![Cube with Pyramids](media/thumbnail_cube_pyramids.png)](https://suppanda9.github.io/VAX/Phone%20Operated%20Cube%20with%20Pyramids/cubePyramids.html)  
 
 ---
 
